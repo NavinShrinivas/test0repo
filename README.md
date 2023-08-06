@@ -8,11 +8,12 @@ This GitHub repository hosts a comprehensive project that combines advanced comp
 
 A licensed plate detector was used to detect license plates. The model was trained with Yolov8 using [this dataset](https://universe.roboflow.com/roboflow-universe-projects/license-plate-recognition-rxg4e/dataset/4). The model is available [here](https://drive.google.com/file/d/1ZKRejyvMO1870mSWH6MZu0lv28xWpSuz/view?usp=drive_link).
 
-## dependencies
-Python 3.x
-OpenCV
-YOLOv8
-SORT
-EasyOCR
-Numpy
-The sort module needs to be downloaded from [this repository](https://github.com/abewley/sort) 
+## Dependencies
+- Python 3.x
+- OpenCV
+- YOLOv8
+- SORT
+- EasyOCR
+- Numpy
+
+**Note:** The sort module needs to be downloaded from [this repository](https://github.com/abewley/sort).
