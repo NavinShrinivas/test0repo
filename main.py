@@ -1,26 +1,30 @@
+import numpy as np
 from ultralytics import YOLO
 import cv2
-
+import time
 import util
 from sort.sort import *
-from util import get_car, read_license_plate, write_csv
-
+from util import get_car, read_license_plate, write_csv, estimate_speed
 
 results = {}
 
 mot_tracker = Sort()
+prev_bbox_centers = {}
 
-# load models
-coco_model = YOLO('yolov8n.pt')
+# load model
+coco_model = YOLO("yolov8n.pt")
 license_plate_detector = YOLO('./models/license_plate_detector.pt')
 
 # load video
 cap = cv2.VideoCapture('./sample.mp4')
-
+video_fps = cap.get(cv2.CAP_PROP_FPS)
 vehicles = [2, 3, 5, 7]
 
-# read frames
 frame_nmr = -1
+
+# read frames
+prev_frame = None
+prev_results = None
 ret = True
 while ret:
     frame_nmr += 1
@@ -38,7 +42,7 @@ while ret:
         # track vehicles
         track_ids = mot_tracker.update(np.asarray(detections_))
 
-        # detect license plates
+        # detect licence plate
         license_plates = license_plate_detector(frame)[0]
         for license_plate in license_plates.boxes.data.tolist():
             x1, y1, x2, y2, score, class_id = license_plate
@@ -49,7 +53,7 @@ while ret:
             if car_id != -1:
 
                 # crop license plate
-                license_plate_crop = frame[int(y1):int(y2), int(x1): int(x2), :]
+                license_plate_crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
                 # process license plate
                 license_plate_crop_gray = cv2.cvtColor(license_plate_crop, cv2.COLOR_BGR2GRAY)
@@ -59,11 +63,19 @@ while ret:
                 license_plate_text, license_plate_text_score = read_license_plate(license_plate_crop_thresh)
 
                 if license_plate_text is not None:
-                    results[frame_nmr][car_id] = {'car': {'bbox': [xcar1, ycar1, xcar2, ycar2]},
-                                                  'license_plate': {'bbox': [x1, y1, x2, y2],
-                                                                    'text': license_plate_text,
-                                                                    'bbox_score': score,
-                                                                    'text_score': license_plate_text_score}}
+                    # Get the speed and license plate information for the car
+                    car_data = {
+                        'locations': track_ids,  # Assuming you have the car's locations over time in track_ids
+                    }
+                    car_info = estimate_speed(car_id, car_data)
+
+                    results[frame_nmr][car_id] = {
+                        'car': {'bbox': [xcar1, ycar1, xcar2, ycar2]},
+                        'car_speed': car_info['speed_label'],
+                        'license_plate': {'bbox': [x1, y1, x2, y2],
+                                          'text': license_plate_text,
+                                          'bbox_score': score,
+                                          'text_score': license_plate_text_score}}
 
 # write results
-write_csv(results, './test.csv')
+write_csv(results, './speed_test.csv')
