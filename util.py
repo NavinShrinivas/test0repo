@@ -1,5 +1,12 @@
 import string
 import easyocr
+import math
+from collections import deque
+import re
+
+data_deque = {}
+
+speed_line_queue = {}
 
 # Initialize the OCR reader
 reader = easyocr.Reader(['en'], gpu=False)
@@ -29,31 +36,38 @@ def write_csv(results, output_path):
         output_path (str): Path to the output CSV file.
     """
     with open(output_path, 'w') as f:
-        f.write('{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox',
-                                                'license_plate_bbox', 'license_plate_bbox_score', 'license_number',
-                                                'license_number_score'))
+        f.write('{},{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox', 'car_speed',
+                                                   'license_plate_bbox', 'license_plate_bbox_score', 'license_number',
+                                                   'license_number_score'))
 
         for frame_nmr in results.keys():
             for car_id in results[frame_nmr].keys():
                 print(results[frame_nmr][car_id])
                 if 'car' in results[frame_nmr][car_id].keys() and \
-                   'license_plate' in results[frame_nmr][car_id].keys() and \
-                   'text' in results[frame_nmr][car_id]['license_plate'].keys():
-                    f.write('{},{},{},{},{},{},{}\n'.format(frame_nmr,
-                                                            car_id,
-                                                            '[{} {} {} {}]'.format(
-                                                                results[frame_nmr][car_id]['car']['bbox'][0],
-                                                                results[frame_nmr][car_id]['car']['bbox'][1],
-                                                                results[frame_nmr][car_id]['car']['bbox'][2],
-                                                                results[frame_nmr][car_id]['car']['bbox'][3]),
-                                                            '[{} {} {} {}]'.format(
-                                                                results[frame_nmr][car_id]['license_plate']['bbox'][0],
-                                                                results[frame_nmr][car_id]['license_plate']['bbox'][1],
-                                                                results[frame_nmr][car_id]['license_plate']['bbox'][2],
-                                                                results[frame_nmr][car_id]['license_plate']['bbox'][3]),
-                                                            results[frame_nmr][car_id]['license_plate']['bbox_score'],
-                                                            results[frame_nmr][car_id]['license_plate']['text'],
-                                                            results[frame_nmr][car_id]['license_plate']['text_score'])
+                        'license_plate' in results[frame_nmr][car_id].keys() and \
+                        'text' in results[frame_nmr][car_id]['license_plate'].keys():
+                    f.write('{},{},{},{},{},{},{},{}\n'.format(frame_nmr,
+                                                               car_id,
+                                                               '[{} {} {} {}]'.format(
+                                                                   results[frame_nmr][car_id]['car']['bbox'][0],
+                                                                   results[frame_nmr][car_id]['car']['bbox'][1],
+                                                                   results[frame_nmr][car_id]['car']['bbox'][2],
+                                                                   results[frame_nmr][car_id]['car']['bbox'][3]),
+                                                               results[frame_nmr][car_id]['car_speed'],
+                                                               '[{} {} {} {}]'.format(
+                                                                   results[frame_nmr][car_id]['license_plate']['bbox'][
+                                                                       0],
+                                                                   results[frame_nmr][car_id]['license_plate']['bbox'][
+                                                                       1],
+                                                                   results[frame_nmr][car_id]['license_plate']['bbox'][
+                                                                       2],
+                                                                   results[frame_nmr][car_id]['license_plate']['bbox'][
+                                                                       3]),
+                                                               results[frame_nmr][car_id]['license_plate'][
+                                                                   'bbox_score'],
+                                                               results[frame_nmr][car_id]['license_plate']['text'],
+                                                               results[frame_nmr][car_id]['license_plate'][
+                                                                   'text_score'])
                             )
         f.close()
 
@@ -72,12 +86,12 @@ def license_complies_format(text):
         return False
 
     if (text[0] in string.ascii_uppercase or text[0] in dict_int_to_char.keys()) and \
-       (text[1] in string.ascii_uppercase or text[1] in dict_int_to_char.keys()) and \
-       (text[2] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or text[2] in dict_char_to_int.keys()) and \
-       (text[3] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or text[3] in dict_char_to_int.keys()) and \
-       (text[4] in string.ascii_uppercase or text[4] in dict_int_to_char.keys()) and \
-       (text[5] in string.ascii_uppercase or text[5] in dict_int_to_char.keys()) and \
-       (text[6] in string.ascii_uppercase or text[6] in dict_int_to_char.keys()):
+            (text[1] in string.ascii_uppercase or text[1] in dict_int_to_char.keys()) and \
+            (text[2] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or text[2] in dict_char_to_int.keys()) and \
+            (text[3] in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] or text[3] in dict_char_to_int.keys()) and \
+            (text[4] in string.ascii_uppercase or text[4] in dict_int_to_char.keys()) and \
+            (text[5] in string.ascii_uppercase or text[5] in dict_int_to_char.keys()) and \
+            (text[6] in string.ascii_uppercase or text[6] in dict_int_to_char.keys()):
         return True
     else:
         return False
@@ -155,3 +169,82 @@ def get_car(license_plate, vehicle_track_ids):
         return vehicle_track_ids[car_indx]
 
     return -1, -1, -1, -1, -1
+
+
+def estimatespeed(Location1, Location2):
+    # Euclidean Distance Formula
+    d_pixel = math.sqrt(math.pow(Location2[0] - Location1[0], 2) + math.pow(Location2[1] - Location1[1], 2))
+    # defining thr pixels per meter
+    ppm = 8
+    d_meters = d_pixel / ppm
+    time_constant = 15 * 3.6
+    # distance = speed/time
+    speed = d_meters * time_constant
+
+    return int(speed)
+
+
+def estimate_speed(car_id, car_data):
+    global data_deque, speed_line_queue
+
+    # Get the track_ids (locations) for the given car_id
+    track_ids = car_data['locations']
+
+    # Remove tracked point from buffer if the object is lost
+    if car_id not in track_ids[:, -1]:
+        if car_id in data_deque:
+            data_deque.pop(car_id)
+
+    x1, y1, x2, y2, _ = track_ids[-1]
+
+    # Code to find the center of the bottom edge
+    center = (int((x2 + x1) / 2), int((y2 + y1) / 2))
+
+    # Create a new buffer for the object if it doesn't exist
+    if car_id not in data_deque:
+        data_deque[car_id] = deque(maxlen=64)
+        speed_line_queue[car_id] = []
+
+    # Add center to the buffer
+    data_deque[car_id].appendleft(center)
+    if len(data_deque[car_id]) >= 2:
+        object_speed = estimatespeed(data_deque[car_id][1], data_deque[car_id][0])
+        speed_line_queue[car_id].append(object_speed)
+
+    # Calculate and display average speed label for the tracked object
+    speed_label = "No speed data available"
+    if car_id in speed_line_queue and len(speed_line_queue[car_id]) > 0:
+        speed_label = str(sum(speed_line_queue[car_id]) // len(speed_line_queue[car_id])) + "km/h"
+
+    return {'speed_label': speed_label, 'license_plate_info': None}
+
+
+def extract_numeric_values(string):
+    def decode_bytes(string):
+        if isinstance(string, bytes):
+            return string.decode('utf-8')
+        elif isinstance(string, str):
+            return string
+        elif isinstance(string, list):
+            return [decode_bytes(item) for item in string]
+        elif isinstance(string, tuple):
+            return tuple(decode_bytes(item) for item in string)
+        elif isinstance(string, dict):
+            return {decode_bytes(key): decode_bytes(value) for key, value in string.items()}
+        else:
+            return string
+
+        # Decode any bytes-like objects in the input data
+
+    decoded_data = decode_bytes(string)
+
+    # Define the regular expression pattern to match valid numeric values
+    pattern = r'\d+'
+
+    # Use the findall method to find all occurrences of the pattern in the string
+    numeric_values = re.findall(pattern, decoded_data)
+
+    # Convert the extracted numeric values to floats (if there are decimals) or integers
+    numeric_values = [float(value) if '.' in value else int(value) for value in numeric_values]
+
+    return numeric_values
