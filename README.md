@@ -1,6 +1,5 @@
 # automatic-number-plate-recognition-Speed-Estimation
 
-# output sample
 ![Screenshot (24)](https://github.com/jamal022/automatic-number-plate-recognition-Speed-Estimation/assets/69757846/b74ca213-2234-4948-9eae-9aa2967efe2c)
 
 **Overview:**
